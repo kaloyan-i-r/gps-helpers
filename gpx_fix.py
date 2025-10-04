@@ -2,20 +2,21 @@
 """
 Normalize & shrink GPX for smooth Lockito replay.
 
-Defaults are optimized for CAR travel:
-- interval=2s, simplify=8m, max-speed=45 m/s, min-distance=2 m
-- precision=5, drop-ele, strip-extensions, no-metadata
+New optimized defaults for high-quality output:
+- interval=1.5s, simplify=0.2m, precision=7 decimals
+- add-timestamps=enabled, zip=enabled (batch mode)
+- drop-ele, strip-extensions, no-metadata
 
-Profiles:
-  --profile car  (default)
-  --profile bike
-  --profile walk
+Profiles (override speed/distance settings):
+  --profile car  (default: max-speed=45 m/s, min-distance=2 m, avg-speed=50 km/h)
+  --profile bike (max-speed=20 m/s, min-distance=1 m, avg-speed=20 km/h)
+  --profile walk (max-speed=3 m/s, min-distance=0.5 m, avg-speed=5 km/h)
 
 Examples:
-  python gpx_fix.py                             # Process all files from broken/ to fixed/
-  python gpx_fix.py trip.gpx                    # Process single file
+  python gpx_fix.py                             # Process all files with optimized defaults
+  python gpx_fix.py trip.gpx                    # Process single file with optimized defaults
   python gpx_fix.py --profile bike              # Batch process with bike profile
-  python gpx_fix.py trip.gpx --interval 3       # Single file with custom settings
+  python gpx_fix.py trip.gpx --no-add-timestamps # Disable timestamp generation
 """
 
 import argparse, os, sys, math, glob, zipfile
@@ -157,34 +158,40 @@ def simplify_points(points, tolerance_m):
     return seg.points
 
 def apply_profile(args):
-    # Defaults already set to car-like; profiles can override.
+    # Global defaults - optimized settings for high quality output
+    # These can be overridden by profile-specific settings
+    default_interval = 1.5
+    default_simplify = 0.2
+    default_precision = 7
+    default_add_timestamps = True
+    default_zip = True
+    
+    # Apply global defaults first
+    if args.interval is None: args.interval = default_interval
+    if args.simplify is None: args.simplify = default_simplify
+    if args.precision is None: args.precision = default_precision
+    if args.add_timestamps is None: args.add_timestamps = default_add_timestamps
+    if args.zip is None: args.zip = default_zip
+    
+    # Profile-specific overrides
     if args.profile=="car":
-        args.interval = args.interval if args.interval is not None else 2.0
-        args.simplify = args.simplify if args.simplify is not None else 8.0
         args.max_speed = args.max_speed if args.max_speed is not None else 45.0
         args.min_distance = args.min_distance if args.min_distance is not None else 2.0
-        args.avg_speed = 25.0  # Average car speed for timestamp generation (90 km/h)
-        args.precision = args.precision if args.precision is not None else 5
+        args.avg_speed = 13.9  # Average car speed for timestamp generation (50 km/h) - more realistic
         if args.drop_ele is None: args.drop_ele = True
         if args.strip_extensions is None: args.strip_extensions = True
         if args.no_metadata is None: args.no_metadata = True
     elif args.profile=="bike":
-        args.interval = args.interval if args.interval is not None else 1.5
-        args.simplify = args.simplify if args.simplify is not None else 5.0
         args.max_speed = args.max_speed if args.max_speed is not None else 20.0
         args.min_distance = args.min_distance if args.min_distance is not None else 1.0
-        args.avg_speed = 8.0  # Average bike speed for timestamp generation (28.8 km/h)
-        args.precision = args.precision if args.precision is not None else 6
+        args.avg_speed = 5.6  # Average bike speed for timestamp generation (20 km/h) - more realistic
         if args.drop_ele is None: args.drop_ele = True
         if args.strip_extensions is None: args.strip_extensions = True
         if args.no_metadata is None: args.no_metadata = True
     elif args.profile=="walk":
-        args.interval = args.interval if args.interval is not None else 1.0
-        args.simplify = args.simplify if args.simplify is not None else 2.0
         args.max_speed = args.max_speed if args.max_speed is not None else 3.0
         args.min_distance = args.min_distance if args.min_distance is not None else 0.5
         args.avg_speed = 1.4  # Average walking speed for timestamp generation (5 km/h)
-        args.precision = args.precision if args.precision is not None else 6
         if args.drop_ele is None: args.drop_ele = True
         if args.strip_extensions is None: args.strip_extensions = True
         if args.no_metadata is None: args.no_metadata = True
@@ -252,7 +259,7 @@ def process_file(input_file, output_file, args):
     return total_pts, kb, reduction_pct
 
 def main():
-    p=argparse.ArgumentParser(description="Normalize & shrink GPX for Lockito (default tuned for car travel).")
+    p=argparse.ArgumentParser(description="Normalize & shrink GPX for Lockito (optimized defaults: interval=1.5s, simplify=0.2m, precision=7, timestamps+zip enabled).")
     p.add_argument("input", nargs="?", help="Input GPX file (if omitted, process all files from broken/ folder)")
     p.add_argument("--profile", choices=["car","bike","walk"], default="car", help="Tuning preset (default: car).")
     # Use None so profile can set sensible defaults; user flags override if provided explicitly.
@@ -269,8 +276,10 @@ def main():
     p.add_argument("--keep-metadata", dest="no_metadata", action="store_false", help="Keep metadata.")
     p.add_argument("--version", choices=["1.0","1.1"], default="1.1", help="Output GPX version.")
     p.add_argument("--no-resample", action="store_true", help="Only clean/simplify; keep original cadence.")
-    p.add_argument("--add-timestamps", action="store_true", help="Generate timestamps for files without them (based on distance and profile speed).")
-    p.add_argument("--zip", action="store_true", help="Create fixed.zip containing all processed files (batch mode only).")
+    p.add_argument("--add-timestamps", action="store_true", default=None, help="Generate timestamps for files without them (default: enabled).")
+    p.add_argument("--no-add-timestamps", dest="add_timestamps", action="store_false", help="Disable automatic timestamp generation.")
+    p.add_argument("--zip", action="store_true", default=None, help="Create fixed.zip containing all processed files (default: enabled for batch mode).")
+    p.add_argument("--no-zip", dest="zip", action="store_false", help="Disable automatic zip creation.")
     args=p.parse_args()
 
     apply_profile(args)

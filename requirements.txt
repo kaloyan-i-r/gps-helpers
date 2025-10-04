@@ -1,0 +1,6 @@
+# GPS Helpers Dependencies
+gpxpy>=1.5.0
+
+# Optional dependencies for enhanced functionality
+# matplotlib>=3.5.0  # For route visualization (uncomment if needed)
+# folium>=0.12.0     # For interactive maps (uncomment if needed)
